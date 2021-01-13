@@ -1,0 +1,9 @@
+{:paths ["src"]
+ :deps {thheller/shadow-cljs {:mvn/version "2.11.8"}
+        devcards/devcards {:mvn/version "0.2.7"}
+        datascript/datascript {:mvn/version "1.0.1"}
+        reagent/reagent {:mvn/version "1.0.0-alpha2"}
+       ;;  io.replikativ/datahike {:local/root "../datahike"}
+        io.replikativ/datahike {:git/url "https://github.com/replikativ/datahike.git"
+                                :sha "7a6dd88fcf9b0eed7b9d1d0010687ac65cb879e3"}
+        camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.2"}}}
