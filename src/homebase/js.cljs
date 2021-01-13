@@ -3,8 +3,10 @@
    [homebase.util :as u]
    [clojure.walk :as walk]
    [camel-snake-kebab.core :as csk]
-   [datascript.core :as d]
-   [datascript.impl.entity :as de]))
+   ;[datascript.core :as d]
+   ;[datascript.impl.entity :as de]
+   [datahike.api :as d]
+   [datahike.impl.entity :as de]))
 
 (defn keywordize-str [s]
   (if (and (string? s) (= (subs s 0 1) ":"))
@@ -57,7 +59,8 @@
     (fn js->tx-part-reducer [acc k v]
       (if (coll? v)
         (js->tx-part v k)
-        (assoc acc (js->key namespace k) v)))
+        (let [v (if (= k "identity") (keyword v) v)]
+          (assoc acc (js->key namespace k) v))))
     {} (js->clj data))))
 
 (defn js->entity-lookup [lookup]
@@ -243,9 +246,9 @@
 (defn transact! 
   ([conn tx] (transact! conn tx nil))
   ([conn tx tx-meta]
-   (try 
-     (d/transact! conn (mapcat (comp nil->retract js->tx-part) tx) tx-meta)
-     (catch js/Error e 
+   (try
+     (d/transact conn (mapcat (comp nil->retract js->tx-part) tx) tx-meta)
+     (catch js/Error e
        (throw (js/Error. (humanize-transact-error e)))))))
 
 (defn entity [conn lookup]

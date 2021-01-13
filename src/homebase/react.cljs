@@ -4,8 +4,12 @@
    [clojure.string]
    [cljs.reader]
    [homebase.js :as hbjs]
-   [datascript.core :as d]
-   [datascript.impl.entity :as de]))
+   ;[datascript.core :as d]
+   [datahike.api :as d]
+   [clojure.core.async]
+   [hitchhiker.tree.utils.cljs.async :as ha]
+   #_[datascript.impl.entity :as de]
+   [datahike.impl.entity :as de]))
 
 (defn try-hook [hook-name f]
   (try (f)
@@ -76,20 +80,33 @@
 (defonce ^:export homebase-context (react/createContext))
 
 (def base-schema
-  {:db/ident {:db/unique :db.unique/identity}})
+  {} #_{:db/ident {:db/unique :db.unique/identity}})
+
+(def cfg-idb {:store  {:backend :indexeddb :id "idb-sandbox"}
+              :keep-history? false
+              :schema-flexibility :read})
+
 
 (defn ^:export HomebaseProvider [props]
-  (let [conn (d/create-conn (if-let [schema (goog.object/getValueByKeys props #js ["config" "schema"])]
+  (let [conn (atom nil)
+        #_conn #_(d/create-conn (if-let [schema (goog.object/getValueByKeys props #js ["config" "schema"])]
                               (merge (hbjs/js->schema schema) base-schema)
                               base-schema))]
-    (when-let [tx (goog.object/getValueByKeys props #js ["config" "initialData"])] 
-      (hbjs/transact! conn tx))
-    (react/createElement
+    (ha/go-try
+     (ha/<? (d/create-database cfg-idb))
+     (reset! conn (ha/<? (d/connect cfg-idb)))
+     (when-let [tx (goog.object/getValueByKeys props #js ["config" "initialData"])]
+       (ha/<? (hbjs/transact! @conn tx)))
+     (let [conn @conn] ; tests that we actually create the database and can get the data. Must delete indexeddb store before refreshing counter page
+       (println "get the result: " (ha/<? ((ha/<? (d/entity @conn :counter)) :counter/count)))))
+    
+    nil
+    #_(react/createElement
      (goog.object/get homebase-context "Provider") 
-     #js {:value conn}
+     #js {:value @conn}  ;will need to deref the atom we put the database in here. Because that also needs to be deref'd. 
      (goog.object/get props "children"))))
 
-(defn ^:export useClient []
+#_(defn ^:export useClient []
   (let [conn (react/useContext homebase-context)
         key (react/useMemo rand #js [])
         client #js {"dbToString" (react/useCallback
@@ -108,16 +125,17 @@
                     "transactSilently" (react/useCallback
                                         (fn [tx] (try-hook "useClient" #(hbjs/transact! conn tx ::silent)))
                                         #js [])
-                    "addTransactListener" (react/useCallback
+                    #_"addTransactListener" #_(react/useCallback
                                            (fn [listener-fn] (d/listen! conn key #(when (not= ::silent (:tx-meta %))
                                                                                    (listener-fn (datoms->js (:tx-data %))))))
                                            #js [])
-                    "removeTransactListener" (react/useCallback
+                    #_"removeTransactListener" #_(react/useCallback
                                               #(d/unlisten! conn key)
                                               #js [])}]
     [client]))
   
 (defn ^:export useEntity [lookup]
+  (println "the lookup: " lookup)
   (let [conn (react/useContext homebase-context)
         cached-entities (react/useMemo #(atom {}) #js [])
         run-lookup (react/useCallback
@@ -133,7 +151,7 @@
                       (when (changed? #js [result] @cached-entities)
                         (setResult result))))
                   #js [run-lookup])]
-    (react/useEffect
+    #_(react/useEffect
      (fn use-entity-effect []
        (let [key (rand)]
          (d/listen! conn key listener)
@@ -141,7 +159,7 @@
      #js [lookup])
     [result]))
 
-(defn ^:export useQuery [query & args]
+#_(defn ^:export useQuery [query & args]
   (let [conn (react/useContext homebase-context)
         cached-entities (react/useMemo #(atom {}) #js [])
         run-query (react/useCallback 
@@ -156,7 +174,7 @@
                       (when (changed? result @cached-entities)
                         (setResult result))))
                   #js [run-query])]
-    (react/useEffect
+    #_(react/useEffect
      (fn use-query-effect []
        (let [key (rand)]
          (d/listen! conn key listener)
@@ -164,7 +182,7 @@
      #js [query args])
     [result]))
 
-(defn ^:export useTransact []
+#_(defn ^:export useTransact []
   (let [conn (react/useContext homebase-context)
         transact (react/useCallback 
                   (fn transact [tx] (try-hook "useTransact" #(hbjs/transact! conn tx)))
