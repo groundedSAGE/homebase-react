@@ -5,5 +5,5 @@
         reagent/reagent {:mvn/version "1.0.0-alpha2"}
        ;;  io.replikativ/datahike {:local/root "../datahike"}
         io.replikativ/datahike {:git/url "https://github.com/replikativ/datahike.git"
-                                :sha "7a6dd88fcf9b0eed7b9d1d0010687ac65cb879e3"}
+                                :sha "0e318b967b8ace834ac11d1e603646f7448229f0"}
         camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.2"}}}

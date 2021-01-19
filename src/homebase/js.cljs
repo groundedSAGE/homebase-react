@@ -3,10 +3,13 @@
    [homebase.util :as u]
    [clojure.walk :as walk]
    [camel-snake-kebab.core :as csk]
+   [clojure.core.async]
+   [hitchhiker.tree.utils.cljs.async :as ha]
    ;[datascript.core :as d]
    ;[datascript.impl.entity :as de]
    [datahike.api :as d]
-   [datahike.impl.entity :as de]))
+   [datahike.impl.entity :as de]
+   ["react" :as react]))
 
 (defn keywordize-str [s]
   (if (and (string? s) (= (subs s 0 1) ":"))
@@ -166,7 +169,9 @@
       (when k (get entity k)))))
 
 (defn entity-in-db? [entity]
-  (not (nil? (first (d/datoms (.-db entity) :eavt (:db/id entity))))))
+  (ha/go-try
+   (let [datoms (ha/<? (d/datoms (ha/<? (.-db entity)) :eavt (:db/id entity)))]
+     (not (nil? (first datoms))))))
 
 (declare HBEntity 
          humanize-get-error 
@@ -181,7 +186,24 @@
 (defn lookup-entity 
   ([entity attrs] (lookup-entity entity attrs false))
   ([entity attrs nil-attrs-if-not-in-db?]
-   (try
+   (ha/go-try
+    (Entity->HBEntity
+     (ha/<?
+      (ha/reduce<
+       (fn [acc attr]
+         (ha/go-try
+          (if-not acc nil
+                  (let [attr (keywordize attr)
+                        f (if (keyword? attr) get js-get)]
+                    (cond
+                      (and nil-attrs-if-not-in-db?
+                           (or (= :db/id attr) (= "id" attr))
+                           (not (ha/<? (entity-in-db? acc)))) nil
+                      (set? acc) (f (first acc) attr)
+                      acc (f acc attr)
+                      :else nil)))))
+       entity attrs))))
+   #_(try
      (Entity->HBEntity
       (reduce
        (fn [acc attr]
@@ -201,7 +223,9 @@
 
 (extend-type de/Entity
   Object
-  (get [entity & attrs] (lookup-entity entity attrs)))
+  (get [entity & attrs] (ha/go-try 
+                         (println "getting from Entity")
+                         (ha/<? (lookup-entity entity attrs))))) ;; TODO: do a take on all lookup-entity
 
 (deftype HBEntity [^de/Entity entity _meta]
   IMeta
@@ -209,27 +233,40 @@
   IWithMeta
   (-with-meta [_ new-meta] (HBEntity. entity new-meta))
   ILookup
-  (-lookup [_ attr] (lookup-entity entity [attr] true))
-  (-lookup [_ attr not-found] (or (lookup-entity entity [attr] true) not-found))
+  (-lookup [_ attr] (do (println "-lookup [_ attr]") (lookup-entity entity [attr] true)))
+  (-lookup [_ attr not-found] (do (println "-lookup [_ attr not-found]") (or (lookup-entity entity [attr] true) not-found)))
   IAssociative
   (-contains-key? [_ k] (not (nil? (lookup-entity entity [k] true))))
   Object
   (get [this attrs]
-    (when (seq attrs)
-      (let [v (lookup-entity entity attrs true)]
-        (when-let [f (:HBEntity/get-cb (meta this))]
-          (f [this attrs v]))
-        v))))
+       (let [[resultState setResult] (react/useState)]
+         
+         (ha/go-try
+          (println "called get in HBEntity ")
+          (js/console.log "attrs" attrs)
+          (js/console.log "entity" entity)
+          (setResult (when (seq attrs)
+                       (ha/<? (lookup-entity entity attrs true))
+                       #_(when-let [f (:HBEntity/get-cb (meta this))]
+                           (f [this attrs v]))))
+          (println "result in HBEntity" resultState))
+         ;nil
+         resultState)))
 
 (defn Entity [^de/Entity d-entity]
   (this-as ^Entity this
-           (set! (.-id this) (:db/id d-entity))
-           (set! (.-type this)
-                 (when-let [type (guess-entity-ns d-entity)]
-                   (csk/->camelCase type)))
-           (when-let [ident (:db/ident d-entity)] 
-             (set! (.-_ident this) ident))
-           (set! (.-_entity this) (HBEntity. d-entity nil))
+          ;;  (set! (.-id this) (:db/id d-entity))
+          ;;  (set! (.-type this)
+          ;;        (when-let [type (guess-entity-ns d-entity)]
+          ;;          (csk/->camelCase type)))
+          ;;  (when-let [ident (:db/ident d-entity)] 
+          ;;    (set! (.-_ident this) ident))
+           (do 
+             (println "called Entity")
+             (js/console.log "called Entity - this" this)
+             (js/console.log "called Entity d-entity" d-entity)
+             (set! (.-_entity this) (HBEntity. d-entity nil))
+             (println "called Entity after HBEntity"))
            this))
 
 (set! (.. Entity -prototype -get)
