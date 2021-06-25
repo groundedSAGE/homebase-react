@@ -8,7 +8,6 @@
    [homebase.js :as hbjs]
    [datascript.core :as d]
    [datascript.impl.entity :as de]
-   ;[homebase.datalog-console :as datalog-console]
    [datalog-console.integrations.datascript :as datalog-console]))
 
 
